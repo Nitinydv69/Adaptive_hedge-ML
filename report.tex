@@ -1,27 +1,24 @@
 \documentclass[11pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
 \usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{hyperref}
-\usepackage{microtype}
-\usepackage{xcolor}
 \usepackage{float}
-\usepackage{subcaption}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 
 \hypersetup{
     colorlinks=true,
-    linkcolor=blue!70!black,
-    citecolor=blue!70!black,
-    urlcolor=blue!70!black
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue
 }
 
-\title{\textbf{Adaptive Learning Rates in Online Prediction with Expert Advice:\\An Empirical and Theoretical Evaluation of AdaHedge}}
+\title{\textbf{Empirical Analysis of AdaHedge in Prediction with Expert Advice}}
 \author{\textbf{Nitin Yadav}\\
-\textit{M.Sc. in Data Science for Economics and Health}\\
+M.Sc. in Data Science for Economics and Health\\
 University of Milan\\
 \texttt{nitin.yadav@studenti.unimi.it}}
 \date{\today}
@@ -31,130 +28,129 @@ University of Milan\\
 \maketitle
 
 \begin{abstract}
-In online learning under the decision-theoretic framework of prediction with expert advice, the classical Hedge algorithm achieves the minimax optimal regret bound of $\mathcal{O}(\sqrt{T \ln K})$ against an arbitrary sequence of losses. However, this theoretical guarantee hinges on a static learning rate $\eta$ calibrated with prior knowledge of the time horizon $T$. When deployed in benign or stochastic environments, standard Hedge is excessively conservative and incurs sub-optimal regret. The AdaHedge algorithm (van Erven et al., 2011; de Rooij et al., 2014) overcomes this limitation by dynamically adapting the learning rate $\eta_t = \frac{\ln K}{\Delta_{t-1}}$ based on the cumulative mixability gap $\Delta_t$. In this work, we implement both standard Hedge and AdaHedge from scratch in Python and conduct a rigorous comparative study across three synthetic environments: stochastic (large gap), adversarial (shifting best expert), and low-gap (subtle difference). Our empirical findings confirm that AdaHedge seamlessly achieves constant regret ($\mathcal{O}(1)$) in benign stochastic regimes, while automatically retaining worst-case robustness ($\mathcal{O}(\sqrt{T \ln K})$) under adversarial shifts, without tuning or horizon-guessing heuristics.
+The Hedge algorithm is a standard method for prediction with expert advice, achieving a minimax regret bound of $\mathcal{O}(\sqrt{T \ln K})$. In practice, setting its learning rate $\eta$ requires knowing the horizon $T$ in advance. When the loss sequence is easy or stochastic, a fixed learning rate tuned for the worst-case makes the algorithm too slow to adapt, accumulating unnecessary regret. The AdaHedge algorithm (van Erven et al., 2011; de Rooij et al., 2014) addresses this by adjusting the learning rate $\eta_t = \frac{\ln K}{\Delta_{t-1}}$ using the cumulative mixability gap $\Delta_t$. In this project, we implement Hedge and AdaHedge from scratch in Python and compare their performance on three synthetic setups: stochastic, adversarial (shifting leader), and a low-gap case. Our simulation results show that AdaHedge achieves near-constant regret on stochastic data while remaining stable when the best expert changes over time.
 \end{abstract}
 
 \vspace{0.5em}
-\noindent\textbf{Declaration of Authorship:}
+\noindent\textbf{Plagiarism Declaration:}
 \textit{I declare that this material, which I now submit for assessment, is entirely my own work and has not been taken from the work of others, save and to the extent that such work has been cited and acknowledged within the text of my work. I understand that plagiarism, collusion, and copying are grave and serious offences in the university and accept the penalties that would be imposed should I engage in plagiarism, collusion or copying. This assignment, or any part of it, has not been previously submitted by me or any other person for assessment on this or any other course of study.}
 
-\section{Introduction and Theoretical Framework}
+\section{Introduction}
 
-In sequential decision making without statistical assumptions on the data-generating mechanism, online learning provides robust performance guarantees against adversarial environments. A fundamental formulation is the \textit{Prediction with Expert Advice} setting, also known as Decision-Theoretic Online Learning (DTOL).
+In online learning with expert advice, a learner makes sequential decisions over $T$ discrete rounds without assuming that the data comes from a stationary probability distribution.
 
-\subsection{Problem Formulation}
-At each discrete time step $t = 1, 2, \dots, T$:
+At each round $t = 1, \dots, T$:
 \begin{enumerate}
-    \item A learner maintains a probability distribution $\mathbf{w}_t = (w_{t,1}, \dots, w_{t,K})^\top$ over a finite set of $K$ experts, where $\sum_{k=1}^K w_{t,k} = 1$ and $w_{t,k} \ge 0$.
+    \item The learner maintains a probability vector $\mathbf{w}_t = (w_{t,1}, \dots, w_{t,K})^\top$ over $K$ experts, with $w_{t,k} \ge 0$ and $\sum_{k=1}^K w_{t,k} = 1$.
     \item Nature reveals a loss vector $\boldsymbol{\ell}_t = (\ell_{t,1}, \dots, \ell_{t,K})^\top \in [0, 1]^K$.
-    \item The learner incurs expected loss:
-    \begin{equation}
-        h_t = \mathbf{w}_t^\top \boldsymbol{\ell}_t = \sum_{k=1}^K w_{t,k} \ell_{t,k}
-    \end{equation}
+    \item The learner incurs the expected loss $h_t = \mathbf{w}_t^\top \boldsymbol{\ell}_t = \sum_{k=1}^K w_{t,k} \ell_{t,k}$.
 \end{enumerate}
-The cumulative loss incurred by the learner over $T$ rounds is $L_{\text{alg}, T} = \sum_{t=1}^T h_t$, while the cumulative loss of any individual expert $k$ is $L_{k, T} = \sum_{t=1}^T \ell_{t,k}$.
 
-The primary evaluation criterion is the \textbf{cumulative regret} with respect to the best single expert in hindsight:
+The performance is evaluated through cumulative regret with respect to the best expert in hindsight:
 \begin{equation}
-    R_T = L_{\text{alg}, T} - \min_{k \in \{1, \dots, K\}} L_{k, T} = \sum_{t=1}^T \mathbf{w}_t^\top \boldsymbol{\ell}_t - \min_{k} \sum_{t=1}^T \ell_{t,k}
+    R_T = \sum_{t=1}^T h_t - \min_{k \in \{1, \dots, K\}} \sum_{t=1}^T \ell_{t,k}
 \end{equation}
-A learning algorithm is Hannan consistent if $\lim_{T \to \infty} \frac{R_T}{T} = 0$.
+The goal of the learner is to guarantee sublinear regret, meaning $R_T / T \to 0$ as $T \to \infty$.
 
-\subsection{Standard Hedge and the Learning Rate Dilemma}
-The classical Hedge algorithm (Freund \& Schapire, 1997) assigns exponential weights to experts:
-\begin{equation}
-    w_{t, k} = \frac{\exp(-\eta L_{t-1, k})}{\sum_{j=1}^K \exp(-\eta L_{t-1, j})}
-\end{equation}
-Under a fixed learning rate $\eta > 0$ and bounded losses $\ell_{t, k} \in [0, 1]$, Hoeffding's inequality yields the classical regret upper bound:
-\begin{equation}
-    R_T \le \frac{\ln K}{\eta} + \frac{\eta T}{8}
-\end{equation}
-Optimizing with respect to $\eta$ requires setting:
-\begin{equation}
-    \eta^* = \sqrt{\frac{8 \ln K}{T}} \implies R_T \le \sqrt{\frac{T \ln K}{2}} = \mathcal{O}(\sqrt{T \ln K})
-\end{equation}
-Despite minimax optimality, this classical formulation presents three major practical bottlenecks:
-\begin{itemize}
-    \item \textbf{Horizon Dependence:} Setting $\eta^*$ requires knowing the time horizon $T$ in advance. Standard doubling tricks introduce artificial periodic resets and non-smooth regret spikes.
-    \item \textbf{Sub-optimality in Benign Regimes:} The $\mathcal{O}(\sqrt{T})$ rate is calibrated for worst-case adversaries. When one expert is clearly superior, Follow-the-Leader (FTL) attains constant $\mathcal{O}(1)$ regret. Hedge locked into $\eta = \mathcal{O}(1/\sqrt{T})$ is excessively slow to concentrate mass.
-    \item \textbf{Sensitivity to Tuning:} An $\eta$ chosen too small induces sluggish updates; an $\eta$ chosen too large induces erratic instability under noise.
-\end{itemize}
+\section{Algorithms}
 
-\subsection{The AdaHedge Algorithm and the Mixability Gap}
-The AdaHedge algorithm (van Erven et al., NeurIPS 2011; de Rooij et al., JMLR 2014) resolves this dilemma by adapting the learning rate online according to the observed difficulty of the sequence.
-
-For learning rate $\eta > 0$, the mix loss is defined as:
+\subsection{Standard Hedge}
+The standard Hedge algorithm (Freund and Schapire, 1997) updates expert weights exponentially based on cumulative losses:
 \begin{equation}
-    m_t(\eta) = -\frac{1}{\eta} \ln \left( \sum_{k=1}^K w_{t,k} \exp(-\eta \ell_{t,k}) \right)
+    w_{t,k} = \frac{\exp(-\eta L_{t-1,k})}{\sum_{j=1}^K \exp(-\eta L_{t-1,j})}
 \end{equation}
-The instantaneous \textbf{mixability gap} $\delta_t$ is defined as:
-\begin{equation}
-    \delta_t = h_t - m_t(\eta_t) = \mathbf{w}_t^\top \boldsymbol{\ell}_t + \frac{1}{\eta_t} \ln \left( \sum_{k=1}^K w_{t,k} \exp(-\eta_t \ell_{t,k}) \right)
-\end{equation}
-By Jensen's inequality applied to the concave logarithm, $\delta_t \ge 0$ always. Taylor expansion indicates $\delta_t \le \frac{\eta_t}{8} \operatorname{Var}_{k \sim \mathbf{w}_t}(\ell_{t,k})$. Thus, when expert consensus is high or weights concentrate, $\delta_t \to 0$.
+where $L_{t-1,k} = \sum_{s=1}^{t-1} \ell_{s,k}$ is the total loss of expert $k$ up to round $t-1$, and $\eta > 0$ is a fixed learning rate.
 
-AdaHedge accumulates these gaps $\Delta_t = \sum_{s=1}^t \delta_s$ and sets:
+From standard theoretical analysis, setting $\eta^* = \sqrt{\frac{8 \ln K}{T}}$ yields an upper bound on regret:
+\begin{equation}
+    R_T \le \sqrt{\frac{T \ln K}{2}}
+\end{equation}
+This bound has two practical drawbacks:
+\begin{enumerate}
+    \item It requires knowing $T$ ahead of time to pick $\eta^*$.
+    \item It assumes the worst-case. If one expert is consistently much better than the others (an easy stochastic setting), Follow-the-Leader would get $\mathcal{O}(1)$ regret, but Hedge with $\eta^*$ will still incur $\mathcal{O}(\sqrt{T})$ regret because its learning rate is forced to be small.
+\end{enumerate}
+
+\subsection{AdaHedge}
+AdaHedge (van Erven et al., 2011; de Rooij et al., 2014) avoids tuning $\eta$ beforehand by tracking how difficult the sequence is round by round. 
+
+For a given $\eta_t$, the mix loss $m_t$ is defined as:
+\begin{equation}
+    m_t(\eta_t) = -\frac{1}{\eta_t} \ln \left( \sum_{k=1}^K w_{t,k} \exp(-\eta_t \ell_{t,k}) \right)
+\end{equation}
+The difference between the expected loss $h_t$ and the mix loss $m_t$ is called the mixability gap:
+\begin{equation}
+    \delta_t = h_t - m_t(\eta_t)
+\end{equation}
+Because the logarithm is concave, Jensen's inequality guarantees that $\delta_t \ge 0$. In intuitive terms, $\delta_t$ measures how much the experts disagree. If the weights are concentrated on a single expert, or if all experts suffer the same loss, $\delta_t = 0$. When there is high variance in expert losses, $\delta_t > 0$.
+
+AdaHedge accumulates these gaps over time, $\Delta_t = \sum_{s=1}^t \delta_s$, and sets the learning rate for the next round as:
 \begin{equation}
     \eta_{t+1} = \frac{\ln K}{\Delta_t}
 \end{equation}
-with $\eta_1 = \infty$. Theoretical analysis proves $R_T \le 2 \Delta_T \le \sqrt{2 T \ln K} + \ln K$.
+At $t=1$, since $\Delta_0 = 0$, $\eta_1 = \infty$, which gives uniform weights initially.
 
 \begin{algorithm}[H]
-\caption{AdaHedge (van Erven et al., 2011; de Rooij et al., 2014)}
+\caption{AdaHedge Implementation}
 \begin{algorithmic}[1]
-\State \textbf{Input:} Number of experts $K$.
-\State \textbf{Initialize:} Cumulative expert losses $L_{0, k} = 0$, cumulative gap $\Delta_0 = 0$.
-\For{round $t = 1, 2, \dots, T$}
-    \State Set learning rate $\eta_t \gets \begin{cases} \infty & \text{if } \Delta_{t-1} = 0 \\ \frac{\ln K}{\Delta_{t-1}} & \text{otherwise} \end{cases}$
-    \State Compute weights $w_{t, k} \gets \frac{\exp(-\eta_t L_{t-1, k})}{\sum_{j=1}^K \exp(-\eta_t L_{t-1, j})}$ \quad (uniform if $\eta_t = \infty$ and $L_{t-1} = \mathbf{0}$)
-    \State Incur expected loss $h_t = \sum_{k=1}^K w_{t, k} \ell_{t, k}$
-    \State Observe loss vector $\boldsymbol{\ell}_t \in [0, 1]^K$
-    \State Compute mix loss $m_t = -\frac{1}{\eta_t} \ln \left(\sum_{k=1}^K w_{t, k} \exp(-\eta_t \ell_{t, k})\right)$
-    \State Compute gap $\delta_t = \max(0, h_t - m_t)$
-    \State Update cumulative gap $\Delta_t \gets \Delta_{t-1} + \delta_t$
-    \State Update cumulative losses $L_{t, k} \gets L_{t-1, k} + \ell_{t, k}$ for all $k$
+\State \textbf{Input:} Number of experts $K$, horizon $T$.
+\State \textbf{Initialize:} $L_{0} = \mathbf{0} \in \mathbb{R}^K$, $\Delta_0 = 0$.
+\For{$t = 1, \dots, T$}
+    \State If $\Delta_{t-1} = 0$: set $\mathbf{w}_t = (1/K, \dots, 1/K)$ and $\eta_t = \infty$.
+    \State Else: $\eta_t = \frac{\ln K}{\Delta_{t-1}}$, and $w_{t,k} \propto \exp(-\eta_t (L_{t-1,k} - \min_j L_{t-1,j}))$.
+    \State Incur expected loss $h_t = \sum_{k=1}^K w_{t,k} \ell_{t,k}$.
+    \State Observe $\boldsymbol{\ell}_t \in [0, 1]^K$.
+    \State Compute mix loss $m_t = -\frac{1}{\eta_t} \ln \left( \sum_{k=1}^K w_{t,k} e^{-\eta_t \ell_{t,k}} \right)$.
+    \State Compute gap $\delta_t = \max(0, h_t - m_t)$.
+    \State Update $\Delta_t = \Delta_{t-1} + \delta_t$ and $L_{t,k} = L_{t-1,k} + \ell_{t,k}$.
 \EndFor
 \end{algorithmic}
 \end{algorithm}
 
-\section{Experimental Methodology}
+\section{Experimental Setup}
 
-\subsection{Synthetic Regimes}
-All algorithms are tested across $K = 10$ experts over $T = 5000$ rounds under three synthetic environments:
+We ran our experiments with $K = 10$ experts over a horizon of $T = 5000$ rounds. Each test was repeated across 20 random seeds to average out noise.
+
+\subsection{Datasets}
+We tested the three synthetic environments specified in the assignment:
 \begin{enumerate}
-    \item \textbf{Stochastic Regime:} Expert 0 incurs $\operatorname{Bernoulli}(0.3)$ losses; experts $1 \dots 9$ incur $\operatorname{Bernoulli}(0.5)$ losses ($\Delta p = 0.20$).
-    \item \textbf{Adversarial Regime:} The horizon is split into 4 equal epochs of 1250 rounds. In epoch $m \in \{1, 2, 3, 4\}$, expert $m-1$ is optimal with $\operatorname{Bernoulli}(0.2)$ losses, while all others incur $\operatorname{Bernoulli}(0.8)$ losses.
-    \item \textbf{Low-Gap Regime:} Expert 0 incurs $\operatorname{Bernoulli}(0.49)$ losses; competitors incur $\operatorname{Bernoulli}(0.50)$ losses ($\Delta p = 0.01$).
+    \item \textbf{Stochastic:} Expert 0 has losses drawn from $\operatorname{Bernoulli}(0.3)$, while experts 1 through 9 have losses drawn from $\operatorname{Bernoulli}(0.5)$. Here, Expert 0 is clearly better ($\Delta p = 0.20$).
+    \item \textbf{Adversarial (Shifting Leader):} The horizon $T$ is divided into 4 equal segments of 1250 rounds. In each segment, a different expert has $\operatorname{Bernoulli}(0.2)$ losses while the other nine have $\operatorname{Bernoulli}(0.8)$. This tests how quickly the algorithm shifts away from an expert that was previously good.
+    \item \textbf{Low-Gap:} Expert 0 has losses from $\operatorname{Bernoulli}(0.49)$, and the others have losses from $\operatorname{Bernoulli}(0.50)$. The difference is subtle ($\Delta p = 0.01$), requiring thousands of samples to separate signal from noise.
 \end{enumerate}
 
-\subsection{Evaluated Configurations}
-We evaluate AdaHedge against five standard Hedge configurations:
-$\eta \in \{0.0050, 0.0303, 0.0607 (\eta^*), 0.1517, 0.5000\}$. All statistics are averaged across 20 independent Monte Carlo runs.
+\subsection{Numerical Details}
+In Python, calculating $\exp(-\eta L_k)$ can cause floating-point underflow or overflow when cumulative loss grows. We handled this by subtracting $\min_j L_j$ inside the exponential for both Hedge and AdaHedge. In the calculation of $m_t$, we also used the log-sum-exp shift trick and clipped exponential arguments to $[-700, 700]$.
 
-\section{Results and Discussion}
+\section{Results and Observations}
+
+Table~\ref{tab:metrics} reports the average cumulative loss and final regret at $T = 5000$ across all 20 runs.
 
 \begin{table}[H]
 \centering
-\caption{Cumulative Loss and Final Regret $R_T$ at $T = 5000$ across 20 trials.}
-\label{tab:results}
+\caption{Average cumulative loss and final regret at $T = 5000$ (20 trials).}
+\label{tab:metrics}
 \begin{tabular}{llrrr}
 \toprule
-\textbf{Regime} & \textbf{Algorithm} & \textbf{Cum. Loss} & \textbf{Best Expert Loss} & \textbf{Final Regret $R_T$} \\
+\textbf{Regime} & \textbf{Method} & \textbf{Cum. Loss} & \textbf{Best Expert} & \textbf{Final Regret $R_T$} \\
 \midrule
-\textbf{Stochastic} & Best Single Expert & $1503.20 \pm 28.1$ & $1503.20$ & $0.00$ \\
-& Hedge ($\eta = 0.005$) & $1953.33 \pm 18.2$ & $1503.20$ & $450.13$ \\
-& Hedge ($\eta^* = 0.061$) & $1543.06 \pm 26.0$ & $1503.20$ & $39.86$ \\
-& \textbf{AdaHedge} & $\mathbf{1509.16 \pm 27.8}$ & $1503.20$ & $\mathbf{5.96}$ \\
+\textbf{Stochastic} & Best Expert & 1503.20 & 1503.20 & 0.00 \\
+& Hedge ($\eta = 0.005$) & 1953.33 & 1503.20 & 450.13 \\
+& Hedge ($\eta^* = 0.061$) & 1543.06 & 1503.20 & 39.86 \\
+& Hedge ($\eta = 0.500$) & 1510.38 & 1503.20 & 7.18 \\
+& \textbf{AdaHedge} & \textbf{1509.16} & 1503.20 & \textbf{5.96} \\
 \midrule
-\textbf{Adversarial} & Best Single Expert & $3217.70 \pm 35.4$ & $3217.70$ & $0.00$ \\
-& Hedge ($\eta = 0.005$) & $3421.78 \pm 32.1$ & $3217.70$ & $204.08$ \\
-& Hedge ($\eta^* = 0.061$) & $3252.61 \pm 30.6$ & $3217.70$ & $34.91$ \\
-& \textbf{AdaHedge} & $\mathbf{3225.18 \pm 31.2}$ & $3217.70$ & $\mathbf{7.48}$ \\
+\textbf{Adversarial} & Best Expert & 3217.70 & 3217.70 & 0.00 \\
+& Hedge ($\eta = 0.005$) & 3421.78 & 3217.70 & 204.08 \\
+& Hedge ($\eta^* = 0.061$) & 3252.61 & 3217.70 & 34.91 \\
+& Hedge ($\eta = 0.500$) & 3228.30 & 3217.70 & 10.60 \\
+& \textbf{AdaHedge} & \textbf{3225.18} & 3217.70 & \textbf{7.48} \\
 \midrule
-\textbf{Low-Gap} & Best Single Expert & $2436.40 \pm 32.7$ & $2436.40$ & $0.00$ \\
-& Hedge ($\eta = 0.005$) & $2495.15 \pm 31.0$ & $2436.40$ & $58.75$ \\
-& Hedge ($\eta^* = 0.061$) & $2489.74 \pm 31.5$ & $2436.40$ & $53.34$ \\
-& \textbf{AdaHedge} & $\mathbf{2486.90 \pm 31.8}$ & $2436.40$ & $\mathbf{50.50}$ \\
+\textbf{Low-Gap} & Best Expert & 2436.40 & 2436.40 & 0.00 \\
+& Hedge ($\eta = 0.005$) & 2495.15 & 2436.40 & 58.75 \\
+& Hedge ($\eta^* = 0.061$) & 2489.74 & 2436.40 & 53.34 \\
+& Hedge ($\eta = 0.500$) & 2481.16 & 2436.40 & 44.76 \\
+& \textbf{AdaHedge} & \textbf{2486.90} & 2436.40 & \textbf{50.50} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -162,50 +158,49 @@ $\eta \in \{0.0050, 0.0303, 0.0607 (\eta^*), 0.1517, 0.5000\}$. All statistics a
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{figures/fig1_regret_comparison.png}
-    \caption{Cumulative Regret $R_t$ over $T=5000$ rounds across Stochastic, Adversarial, and Low-Gap regimes.}
+    \caption{Cumulative Regret $R_t$ over time for the three settings (mean $\pm$ standard deviation over 20 runs).}
     \label{fig:regret}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{figures/fig2_cum_loss_comparison.png}
-    \caption{Cumulative Loss $L_t$ vs. Time for AdaHedge, Hedge variants, and Best Single Expert.}
+    \caption{Cumulative Loss $L_t$ over time compared to the Best Single Expert in hindsight.}
     \label{fig:loss}
 \end{figure}
 
-\subsection{Regret Trajectories and Tracking Analysis}
-As seen in Figure~\ref{fig:regret} and Table~\ref{tab:results}:
-\begin{enumerate}
-    \item \textbf{Stochastic Setting:} AdaHedge achieves $R_T = 5.96$, outperforming minimax Hedge ($R_T = 39.86$) by a factor of 6.7. Standard Hedge with conservative tuning ($\eta=0.005$) suffers catastrophic linear regret ($R_T = 450.13$).
-    \item \textbf{Adversarial Setting:} When the optimal expert shifts between phases, AdaHedge rapidly reallocates weights and bounds cumulative regret at $R_T = 7.48$, avoiding instability.
-    \item \textbf{Low-Gap Setting:} In this high-variance regime, AdaHedge achieves $R_T = 50.50$, superior to all static Hedge baselines.
-\end{enumerate}
+\subsection{Discussion of Regret Curves}
+\begin{itemize}
+    \item \textbf{Stochastic case:} As shown in Figure~\ref{fig:regret}, AdaHedge quickly shifts its weight to Expert 0. Once this happens, the regret curve flattens out, giving a final regret of 5.96. In contrast, standard Hedge with minimax tuning $\eta^* = 0.061$ keeps accumulating regret because its learning rate is held down by the $\sqrt{T}$ schedule, finishing at $R_T = 39.86$. A very small learning rate ($\eta = 0.005$) performs poorly ($R_T = 450.13$) because it takes thousands of rounds to downweight bad experts.
+    \item \textbf{Adversarial case:} When the best expert changes at rounds 1250, 2500, and 3750, the algorithm experiences sudden losses. AdaHedge adjusts its weights across each phase, ending with $R_T = 7.48$.
+    \item \textbf{Low-Gap case:} Because the margin between 0.49 and 0.50 is small, variance dominates the first 1000 rounds. AdaHedge maintains stable performance without needing any manual tuning of $\eta$.
+\end{itemize}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{figures/fig3_adahedge_dynamics.png}
-    \caption{AdaHedge Internal Dynamics: Adaptive learning rate $\eta_t$ and cumulative mixability gap $\Delta_t$.}
+    \caption{Evolution of the learning rate $\eta_t$ (left) and the cumulative mixability gap $\Delta_t$ (right).}
     \label{fig:dynamics}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{figures/fig4_expert_weights.png}
-    \caption{AdaHedge Expert Weights $w_{t, k}$: Concentration in stochastic regime (left) and epoch tracking in adversarial regime (right).}
+    \caption{Weight evolution $w_{t,k}$ under AdaHedge in the stochastic setting (left) and adversarial setting (right).}
     \label{fig:weights}
 \end{figure}
 
-\subsection{Inspection of Internal Mechanics}
-Figure~\ref{fig:dynamics} demonstrates the mechanism behind AdaHedge's adaptivity:
+\subsection{Internal Dynamics of AdaHedge}
+Figure~\ref{fig:dynamics} shows why AdaHedge works:
 \begin{itemize}
-    \item In the stochastic regime, weights rapidly concentrate on Expert 0 (Figure~\ref{fig:weights}, left). Consequently, $h_t \approx m_t$ and $\delta_t \to 0$. The cumulative sum $\Delta_t$ asymptotically stabilizes at a constant ($\Delta_T \approx 5$), keeping $\eta_t$ high and achieving $\mathcal{O}(1)$ regret.
-    \item In the adversarial regime, epoch transitions introduce temporary prediction discrepancies, producing non-zero $\delta_t$ pulses. This steadily raises $\Delta_t$, decreasing $\eta_t \propto 1/\Delta_{t-1}$ and maintaining robust $\mathcal{O}(\sqrt{T \ln K})$ stability.
+    \item In the stochastic setting, once Expert 0 is identified, the weight on Expert 0 approaches 1 (Figure~\ref{fig:weights}, left). Because the algorithm predicts almost deterministically on the best expert, the mixability gap $\delta_t$ drops to zero. Consequently, $\Delta_t$ stops growing and flattens out around $\Delta_T \approx 5$. Since $\Delta_t$ stays constant, $\eta_t$ stays high ($\approx 0.4$), giving constant regret.
+    \item In the adversarial setting, every time the leader changes, the algorithm makes wrong predictions, which causes $\delta_t > 0$. This pushes $\Delta_t$ up, which automatically lowers $\eta_t$. This acts as a brake, preventing the weights from oscillating erratically.
 \end{itemize}
 
 \section{Conclusion}
-AdaHedge bridges the divide between worst-case conservatism and fast empirical convergence. By accumulating the mixability gap online, it dispenses with prior horizon knowledge and hyperparameter search, automatically achieving constant regret on easy data while retaining minimax safety in adversarial environments.
+Our simulations confirm the practical benefits of AdaHedge. By tracking the cumulative mixability gap, the algorithm automatically adapts to the difficulty of the sequence: it gets constant $\mathcal{O}(1)$ regret on easy stochastic data, while preserving the worst-case $\mathcal{O}(\sqrt{T \ln K})$ guarantee on adversarial data, all without knowing the time horizon $T$ in advance.
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{4}
 \bibitem{vanerven2011}
 T.~van Erven, P.~D. Gr{\"u}nwald, W.~M. Koolen, and S.~de~Rooij.
 \newblock Adaptive Hedge.
@@ -214,14 +209,14 @@ T.~van Erven, P.~D. Gr{\"u}nwald, W.~M. Koolen, and S.~de~Rooij.
 \bibitem{derooij2014}
 S.~de~Rooij, T.~van Erven, P.~D. Gr{\"u}nwald, and W.~M. Koolen.
 \newblock Follow the Leader If You Can, Hedge If You Must.
-\newblock \emph{Journal of Machine Learning Research}, 15:\penalty0 1281--1316, 2014.
+\newblock \emph{Journal of Machine Learning Research}, 15:1281--1316, 2014.
 
 \bibitem{freund1997}
 Y.~Freund and R.~E. Schapire.
 \newblock A Decision-Theoretic Generalization of On-Line Learning and an Application to Boosting.
-\newblock \emph{Journal of Computer and System Sciences}, 55\penalty0 (1):\penalty0 119--139, 1997.
+\newblock \emph{Journal of Computer and System Sciences}, 55(1):119--139, 1997.
 
-\bibitem{cesa2006}
+\bibitem{cesabianchi2006}
 N.~Cesa-Bianchi and G.~Lugosi.
 \newblock \emph{Prediction, Learning, and Games}.
 \newblock Cambridge University Press, 2006.
