@@ -45,6 +45,7 @@ def run_experiment_suite(setting_name, generator_func, T=10000, K=10, num_runs=3
         regrets[f"Hedge (optimal eta)"][seed] = compute_regret(h1_loss, losses)
 
         h2_loss = run_hedge(losses, eta=etas[2])
+        regrets[f"Hedge (eta={etas[2]})"][seed] = compute_regret(
             h2_loss, losses)
 
     os.makedirs("plots", exist_ok=True)
