@@ -1,0 +1,21 @@
+setting,algorithm,final_regret_mean,final_regret_std
+Stochastic,AdaHedge,5.544689528179686,1.8146094626850027
+Stochastic,Hedge $\eta=0.005$ (small),450.2028489237349,1.756100337096894
+Stochastic,Hedge $\eta^*=0.061$ (theory-optimal),39.913074279481705,0.24766547537966296
+Stochastic,Hedge $\eta=0.5$ (large),6.860649167027271,0.6460703270940983
+Stochastic,Hedge best eta in sweep (oracle),4.233453271982057,1.690778110011715
+Low gap,AdaHedge,54.311994139948204,11.496955971610117
+Low gap,Hedge $\eta=0.005$ (small),61.66061394559851,15.020758552068669
+Low gap,Hedge $\eta^*=0.061$ (theory-optimal),54.5601765201734,5.3995064364583625
+Low gap,Hedge $\eta=0.5$ (large),53.57984675125162,18.81989015412046
+Low gap,Hedge best eta in sweep (oracle),52.210528484685234,13.894595378285047
+Adversarial,AdaHedge,9.552897739982722,5.989839221681799
+Adversarial,Hedge $\eta=0.005$ (small),229.1082454867932,11.927763986427092
+Adversarial,Hedge $\eta^*=0.061$ (theory-optimal),37.689207002781174,3.402041773176972
+Adversarial,Hedge $\eta=0.5$ (large),12.078389401843173,6.187840077631713
+Adversarial,Hedge best eta in sweep (oracle),8.263501132263922,6.520232792377488
+Alternating,AdaHedge,54.09140620662947,0.0
+Alternating,Hedge $\eta=0.005$ (small),325.30625338367736,0.0
+Alternating,Hedge $\eta^*=0.061$ (theory-optimal),64.72586508197628,0.0
+Alternating,Hedge $\eta=0.5$ (large),309.58276152054077,0.0
+Alternating,Hedge best eta in sweep (oracle),63.718091661050494,0.0
