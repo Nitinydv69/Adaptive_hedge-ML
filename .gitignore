@@ -1,0 +1,24 @@
+# macOS / editor junk
+.DS_Store
+*.code-workspace
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# LaTeX build files (keep report.tex and report.pdf)
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
