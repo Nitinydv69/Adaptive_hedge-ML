@@ -1,0 +1,359 @@
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+\usepackage{float}
+\graphicspath{{plots/}{./}}
+
+\newcommand{\Hedge}{\textsc{Hedge}}
+\newcommand{\Ada}{\textsc{AdaHedge}}
+\newcommand{\lnK}{\ln K}
+
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small Adaptive Hedge vs.\ Hedge}
+\fancyhead[R]{\small\nouppercase{\leftmark}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+
+\begin{document}
+
+%====================== TITLE PAGE ======================
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+\vspace*{2.5cm}
+{\large Universit\`a degli Studi di Milano}\\[0.3cm]
+{\large Statistical Methods for Machine Learning --- A.Y.\ 2025/26}\\[0.2cm]
+{\large Experimental Project, Assignment 1}\\[2.2cm]
+{\Huge\bfseries Adaptive Hedge vs.\ Hedge\\[0.3cm] with Fixed Learning Rate}\\[0.6cm]
+{\Large An experimental study of prediction with expert advice}\\[3cm]
+{\Large\textbf{Nitin Yadav}}\\[0.3cm]
+{\large Student ID: 69199A}\\[0.3cm]
+{\large Data Science for Economics and Health}\\[2.2cm]
+Instructor: Nicol\`o Cesa-Bianchi\\[0.5cm]
+Code repository: \url{https://github.com/Nitinydv69/Adaptive_hedge-ML}\\[0.4cm]
+\today
+\end{titlepage}
+
+
+\setcounter{page}{2}
+\hspace{}
+\section*{\project \centering Declaration}
+\emph{I declare that this material, which I now submit for assessment, is entirely my own work and has not been
+taken from the work of others, save and to the extent that such work has been cited and acknowledged within the
+text of my work. I understand that plagiarism, collusion, and copying are grave and serious offences in the
+university and accept the penalties that would be imposed should I engage in plagiarism, collusion or copying.
+This assignment, or any part of it, has not been previously submitted by me or any other person for assessment
+on this or any other course of study.}
+\bigskip\par\noindent Signed: Nitin Yadav \hfill Date: \today
+\vspace{3cm}
+\section*{\centering Abstract}
+I implement from scratch the \Hedge{} algorithm with a fixed learning rate $\eta$ and the parameter-free
+\Ada{} algorithm \cite{vanErven2011,deRooij2014}, and compare them on four synthetic loss sequences ($K=10$, $T=5000$, 20 seeds): a stochastic
+sequence with a large gap, one with a tiny gap, a piecewise-stationary (``switching'') sequence, and a deterministic sequence that is a worst case for
+follow-the-leader. No fixed $\eta$ is good everywhere: $\eta=0.5$ gives regret $\approx 7$ on the stochastic sequence but $\approx 310$ (linear in $T$) on the
+alternating one, while the worst-case-optimal $\eta^*$ is safe but $7\times$ worse than \Ada{} on the stochastic sequence ($39.9$ vs.\ $5.5$).
+\Ada{} is better than every realisable fixed choice I tried on all three informative sequences, and within about $1.3$ regret units of a hindsight-tuned oracle
+(a small but statistically detectable gap) on the two stochastic-type ones. A scaling experiment ($T=500$ to $50\,000$) shows its regret flat on easy data and growing like $\sqrt T$ on the hard sequence.
+On the nearly indistinguishable low-gap sequence no algorithm is distinguishable from another, and I explain why.
+I trace the behaviour to $\eta_t=\lnK/\Delta_{t-1}$ and verify numerically that $R_T\le 2\Delta_T$.
+
+%====================== MAIN MATTER ======================
+\pagebreak
+\section{Introduction}
+\paragraph{Motivation.}
+Online learning gives guarantees that hold for \emph{every} sequence, without probabilistic assumptions.
+In the course this is developed through online gradient descent over continuous decision sets; prediction with expert advice is
+the combinatorial counterpart: a learner combines the advice of $K$ experts, and the standard algorithm, \Hedge{}, depends on a learning rate $\eta$.
+Too large an $\eta$ makes the algorithm chase noise; too small makes it slow. The theory-optimal value needs the horizon $T$ and
+is tuned for the \emph{worst} case, which can be very pessimistic on easy data. The paper \emph{Adaptive Hedge} \cite{vanErven2011} removes this tuning.
+
+\paragraph{Objectives.}
+I (i) implement \Hedge{} and \Ada{} from scratch, (ii) compare them with several $\eta$ on stochastic, low-gap and switching sequences, (iii) identify the regimes where
+adaptivity helps, and (iv) connect the behaviour to the theory.
+Beyond the minimum I add: an $\eta$-sweep with the theoretical bound overlaid; the trajectory $\eta_t$ of \Ada{}; a deterministic worst-case sequence; a scaling study in $T$;
+paired confidence intervals; and a numerical check of $R_T\le2\Delta_T$.
+
+\section{Background}\label{sec:background}
+\subsection{Problem setting}
+At each round $t=1,\dots,T$ the learner picks $w_t\in\Delta_K$ (the probability simplex), then observes $\ell_t\in[0,1]^K$ and
+suffers $h_t=\langle w_t,\ell_t\rangle$. The regret against the best fixed expert is
+\[
+R_T=\sum_{t=1}^T h_t-\min_k L_{T,k},\qquad L_{T,k}=\sum_{t=1}^T \ell_{t,k}.
+\]
+
+\subsection{Hedge}
+\Hedge{} plays $w_{t,k}\propto \exp(-\eta L_{t-1,k})$ (Algorithm~\ref{alg:hedge}). For every sequence, $R_T\le \frac{\lnK}{\eta}+\frac{\eta T}{8}$, which is minimised by
+$\eta^*=\sqrt{8\lnK/T}$ and gives $R_T\le\sqrt{(T/2)\lnK}$. This needs $T$ in advance, and it is a worst-case statement, pessimistic on easy data.
+
+\subsection{AdaHedge}
+Define the \emph{mix loss} $m_t=-\frac1{\eta_t}\ln\sum_k w_{t,k}e^{-\eta_t\ell_{t,k}}$ and the \emph{mixability gap}
+$\delta_t=h_t-m_t\ge0$; let $\Delta_t=\sum_{s\le t}\delta_s$. \Ada{} uses $\eta_t=\lnK/\Delta_{t-1}$, with $\eta_1=\infty$ (Algorithm~\ref{alg:ada}).
+The gap $\delta_t$ measures how much the learner loses relative to an idealised mix prediction; it is small when the weights are concentrated
+(easy data) and large when experts disagree and the leader keeps changing.
+The regret is controlled by this data-dependent quantity: with $M_T=\sum_t m_t$ we have $R_T=\Delta_T+(M_T-L^*_T)$, and for non-increasing learning rates $M_T-L^*_T\le\lnK/\eta_T=\Delta_{T-1}$, hence
+\begin{equation}\label{eq:bound}
+R_T\le 2\Delta_T \qquad\text{\cite{deRooij2014} (proof sketch above)},
+\end{equation}
+and $\Delta_T=O(\sqrt{T\lnK})$ in the worst case \cite{vanErven2011,deRooij2014} (quoted up to constants and lower-order terms). So \Ada{} keeps a worst-case
+guarantee of the same order as \Hedge{}$(\eta^*)$ without tuning, and can be far better when $\Delta_T$ is small.
+
+\begin{algorithm}[H]
+\caption{\Hedge{} with fixed $\eta$}\label{alg:hedge}
+\begin{algorithmic}[1]
+\State $L\gets 0\in\mathbb R^K$
+\For{$t=1,\dots,T$}
+  \State $w_k\propto\exp(-\eta(L_k-\min_j L_j))$
+  \State play $w$; observe $\ell_t$; suffer $h_t=\langle w,\ell_t\rangle$; $L\gets L+\ell_t$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{\Ada{}}\label{alg:ada}
+\begin{algorithmic}[1]
+\State $L\gets0$, $\Delta\gets0$
+\For{$t=1,\dots,T$}
+  \If{$\Delta=0$} $\eta\gets\infty$; $w\gets$ uniform on $\arg\min_k L_k$
+  \Else{} $\eta\gets\lnK/\Delta$; $w_k\propto\exp(-\eta(L_k-\min_jL_j))$
+  \EndIf
+  \State play $w$; observe $\ell_t$; $h\gets\langle w,\ell_t\rangle$
+  \State $m\gets \min_{k:w_k>0}\ell_{t,k}$ if $\eta=\infty$, else $-\frac1\eta\ln\sum_k w_ke^{-\eta\ell_{t,k}}$
+  \State $\Delta\gets\Delta+\max(0,h-m)$; $L\gets L+\ell_t$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\section{Experimental methodology}\label{sec:method}
+\subsection{Implementation}
+Both algorithms use NumPy only (\texttt{src/algorithms.py}). The exponent is shifted by the minimum cumulative loss for numerical stability. In \Ada{} the mix loss is
+computed with a shift by the minimum loss over the \emph{support} of $w_t$, which is exact for $\eta=\infty$ and avoids underflow for large $\eta$.
+(My first version shifted by the minimum over all experts, which gave $\delta_t\approx1$ instead of $0$ in the $\eta=\infty$ phase; I found this with a two-round counterexample and fixed it before the experiments below.)
+
+\subsection{Loss sequences}
+All sequences use $K=10$, $T=5000$ and binary losses (except $t=1$ in the last one). They differ in how hard it is to identify and follow the best expert.
+\begin{description}\setlength\itemsep{1pt}
+\item[Stochastic.] Expert 1 $\sim$ Bernoulli$(0.3)$, the other nine Bernoulli$(0.5)$ (gap $0.2$).
+\item[Low gap.] Best expert Bernoulli$(0.49)$, the others $0.5$ (gap $0.01$, below the statistical resolution $\approx1/\sqrt T\approx0.014$).
+\item[Adversarial (switching).] Three equal segments; in segment $s$ expert $s$ is Bernoulli$(0.2)$, the others $0.5$. The best expert changes over time, but the sequence is random and oblivious, so it is ``adversarial'' only in that sense. The best \emph{fixed} expert has mean loss $\approx 0.4$.
+\item[Alternating (extra).] Deterministic. Experts 1 and 2 alternate between losses 0 and 1 in opposite phase; the other experts always lose 1. The leader flips every round, so a greedy learner loses $\approx1$ per round while the best expert loses $\approx T/2$. This is a worst case for follow-the-leader and for large~$\eta$; Section~\ref{sec:sweep} shows that fixed-$\eta$ \Hedge{} is also close to its own bound here.
+\end{description}
+
+\subsection{Protocol and metrics}
+20 seeds ($0,\dots,19$) per setting; all algorithms see the \emph{same} sequence for a given seed (paired comparison). \Hedge{} is run with $\eta\in\{0.005,\ \eta^*\approx0.061,\ 0.5\}$ and on a grid of 11 log-spaced values in $[10^{-2.5},10^{0.5}]$; the best grid value per setting serves as a hindsight \emph{oracle} reference (not a realisable algorithm, and optimistic, since it is selected on the same seeds it is evaluated on).
+Metrics: regret at time $t$ against the best fixed expert up to $t$, final regret (mean $\pm$ std), cumulative loss, and for \Ada{} the trajectory $\eta_t$ and final gap $\Delta_T$.
+Confidence intervals are 95\% $t$-intervals over seeds (19 degrees of freedom).
+
+\section{Results}\label{sec:results}
+\subsection{Overview}
+Figure~\ref{fig:regret} shows regret over time and Table~\ref{tab:final} the final regrets.
+
+\begin{figure}[t]
+\centering
+\begin{subfigure}{0.49\textwidth}\includegraphics[width=\linewidth]{regret_stochastic.png}\end{subfigure}
+\begin{subfigure}{0.49\textwidth}\includegraphics[width=\linewidth]{regret_low_gap.png}\end{subfigure}
+\begin{subfigure}{0.49\textwidth}\includegraphics[width=\linewidth]{regret_adversarial.png}\end{subfigure}
+\begin{subfigure}{0.49\textwidth}\includegraphics[width=\linewidth]{regret_alternating.png}\end{subfigure}
+\caption{Cumulative regret vs.\ time (mean $\pm$ std, 20 runs). Dashed: $\sqrt{(t/2)\lnK}$, the \Hedge{} worst-case bound when tuned for horizon $t$.}
+\label{fig:regret}
+\end{figure}
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+ & Stochastic & Low gap & Switching & Alternating\\
+\midrule
+\Ada{} (no tuning) & $5.5\pm1.8$ & $54.3\pm11.5$ & $9.6\pm6.0$ & $54.1\pm0.0$ \\
+\Hedge{} $\eta=0.005$ & $450.2\pm1.8$ & $61.7\pm15.0$ & $229.1\pm11.9$ & $325.3\pm0.0$ \\
+\Hedge{} $\eta^*=0.061$ & $39.9\pm0.2$ & $54.6\pm5.4$ & $37.7\pm3.4$ & $64.7\pm0.0$ \\
+\Hedge{} $\eta=0.5$ & $6.9\pm0.6$ & $53.6\pm18.8$ & $12.1\pm6.2$ & $309.6\pm0.0$ \\
+\midrule
+\Hedge{}, best grid $\eta$ (oracle) & $4.2\pm1.7$ & $52.2\pm13.9$ & $8.3\pm6.5$ & $63.7\pm0.0$\\
+\bottomrule
+\end{tabular}
+\caption{Regret at $T=5000$, mean $\pm$ std over 20 runs. The oracle row uses hindsight to pick $\eta$ and is not realisable. The alternating sequence is deterministic, hence std $=0$.}
+\label{tab:final}
+\end{table}
+
+\subsection{Stochastic (large gap)}
+\Hedge{} with $\eta=0.005$ stays near-uniform for thousands of rounds: its regret is still growing at $T$ ($450$). With a fixed $\eta$ the regret on easy data saturates at a level of order $\lnK/\eta$ (the price of learning which expert is best):
+for $\eta^*$ it flattens at $\approx40$ after $\approx500$ rounds (compare $\lnK/\eta^*\approx38$). With $\eta=0.5$ and \Ada{} the regret is a small constant ($6.9$ and $5.5$).
+\Ada{} is about $7\times$ better than $\eta^*$. \emph{This is the regime where adaptivity helps most.}
+
+\subsection{Low gap}
+All methods finish at $52$--$62$ and the differences are smaller than the spread over seeds, so \emph{no algorithm can be declared better here}.
+The reason is not the algorithms: the regret is dominated by the comparator. Over the 20 runs the best expert beats the average loss $T/2$
+by $69.0$ (pure noise would give $\approx1.54\cdot\sqrt T/2\approx54$ from the minimum of ten Bernoulli$(0.5)$ sums, the rest coming from the true $0.01$ gap), while \Ada{} itself ends $14.7$ \emph{below} $T/2$.
+The comparator is ``lucky'' by an amount no online algorithm can match.
+To check this directly, Table~\ref{tab:pseudo} reports the \emph{pseudo-regret} against expert~1, the best in expectation: all learners sit at $\approx30$, only modestly below uniform weights ($39$), and indistinguishable from each other. The $\approx23$ difference to the realised regret ($54$) is exactly how much the best realised expert beats expert~1.
+So at this gap and horizon, the sequence simply does not contain enough information to identify the best expert, whichever comparator is used.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lr}
+\toprule
+Algorithm & Pseudo-regret vs.\ expert 1 (mean $\pm$ 95\% CI)\\
+\midrule
+\Ada{} & $31.0\pm13.5$ \\
+\Hedge{} $\eta^*$ & $31.2\pm12.9$ \\
+\Hedge{} $\eta=0.5$ & $30.2\pm13.6$ \\
+Uniform weights (no learning) & $39.0\pm16.4$\\
+\bottomrule
+\end{tabular}
+\caption{Low gap, $T=5000$: $\sum_t h_t-L_{T,1}$, i.e.\ regret against the best expert \emph{in expectation} rather than in hindsight.}
+\label{tab:pseudo}
+\end{table}
+
+\subsection{Switching best expert}
+\Ada{} ($9.6$) and $\eta=0.5$ ($12.1$) clearly beat $\eta^*$ ($37.7$) and $\eta=0.005$ ($229$). Large $\eta$ is not punished because losses are random with large within-segment gaps.
+Regret is measured against the best \emph{fixed} expert, whose loss rate ($\approx0.4$) is worse than the segment-best expert ($0.2$). \Hedge{} and \Ada{} cannot exploit this gap: their weights depend on \emph{cumulative} losses, so they never forget earlier segments and only converge to a good fixed expert; tracking the switching comparator would need a variant such as Fixed Share. The sequence is therefore a weak stress test of adaptivity, which motivates the alternating one.
+
+\subsection{Alternating (deterministic worst case)}
+Large $\eta$ fails here: $\eta=0.5$ follows the flipping leader and its regret is $309.6$, close to near-uniform $\eta=0.005$ ($325$).
+$\eta^*$ ($64.7$) and \Ada{} ($54.1$) stay below the worst-case bound ($\approx76$). \Ada{} is below every grid value, including the oracle ($63.7$); with a single deterministic sequence there is no seed-to-seed spread and my $\eta$ grid is coarse, so I do not claim this is significant.
+The key finding is qualitative: \emph{no single $\eta$ is good both here and on the stochastic sequence}, while \Ada{} is near-best in both.
+
+\subsection{Hedge vs.\ its theoretical bound}\label{sec:sweep}
+Figure~\ref{fig:sweeptheory} plots final regret against $\eta$ together with the bound $\lnK/\eta+\eta T/8$. On the alternating sequence the observed curve follows the bound closely on both sides of the minimum (within a factor $\approx2$ over the whole range), so this sequence is nearly a worst case for \emph{every} fixed $\eta$, and the best fixed $\eta$ is $\approx\eta^*$.
+On the stochastic and switching sequences the large-$\eta$ branch of the bound is very loose: the observed regret keeps decreasing as $\eta$ grows, and the best fixed $\eta$ is at the edge of the grid.
+Thus the minimiser moves from $\eta\approx\eta^*$ to very large $\eta$, and \Ada{} (red line) tracks whichever is right. On low gap the curve is flat: when data is hard to read, $\eta$ barely matters.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\linewidth]{eta_sweep_theory.png}
+\caption{Final regret of \Hedge{} vs.\ $\eta$ (blue, mean $\pm$ std, log--log) with the bound $\lnK/\eta+\eta T/8$ (dashed); \Ada{} needs no tuning (red).}
+\label{fig:sweeptheory}
+\end{figure}
+
+\subsection{Scaling with the horizon}
+Figure~\ref{fig:scaling} varies $T\in\{500,5000,50\,000\}$ for the stochastic (20 seeds; 10 at $T=50\,000$ for runtime) and alternating (single deterministic sequence) settings, with \Hedge{} at $\eta=0.5$ and at the horizon-tuned $\eta^*(T)$.
+On the stochastic sequence \Ada{} stays flat ($6.2,\,5.5,\,5.2$) as does $\eta=0.5$ ($7.2,\,6.9,\,7.0$), whereas $\eta^*(T)$ grows like $\sqrt T$ ($14.3,\,39.9,\,122.0$): the worst-case tuning pays a growing price on easy data.
+On the alternating sequence, $\eta=0.5$ grows linearly ($34.0,\,309.6,\,3065$; a factor $\approx10$ per decade), while \Ada{} ($17.4,\,54.1,\,170.1$) grows by $\approx3.1\approx\sqrt{10}$ per decade, i.e.\ like $\sqrt T$, as does $\eta^*(T)$ ($20.6,\,64.7,\,204.1$).
+This supports the claim that \Ada{} behaves like a horizon-free $\eta^*$ on hard data and like a large $\eta$ on easy data.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\linewidth]{scaling.png}
+\caption{Final regret vs.\ horizon $T$ (log--log). Dashed: $\sqrt{(T/2)\lnK}$; dotted: linear growth.}
+\label{fig:scaling}
+\end{figure}
+
+\subsection{Learning-rate behaviour}
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.55\linewidth]{adahedge_eta.png}
+\caption{Median over runs of $\eta_t=\lnK/\Delta_{t-1}$ for \Ada{} ($t\ge2$, log--log).}
+\label{fig:eta}
+\end{figure}
+Figure~\ref{fig:eta} shows why \Ada{} adapts. On the stochastic sequence $\eta_t$ stops decreasing after $\approx60$ rounds at $\approx0.66$ ($\Delta\approx3.5$): once the weights concentrate on the best expert,
+$\delta_t\to0$, $\Delta_t$ stops growing, and the large learning rate is retained, giving constant regret. On the hard sequences the weights never concentrate, $\delta_t$ keeps contributing, and $\eta_t$ decays like $1/\sqrt t$:
+a least-squares fit of the log--log median curve on $t\ge500$ gives slope $-0.47$ (low gap) and $-0.50$ (alternating), recovering the scaling $\eta^*\propto1/\sqrt T$. On the switching sequence the slope is $-0.26$: $\eta_t$ sits on a plateau ($\approx1$) until $t\approx3300$, about the start of the third segment, and only then decreases; on the stochastic one the slope is $0.00$.
+
+\subsection{Cumulative loss}
+The assignment asks for cumulative-loss plots; for all four settings they are in Appendix~\ref{app:cum}. Because all curves are $\approx t/2$ they look identical at full scale, so Figure~\ref{fig:cumzoom} adds a zoom on the last 500 rounds for two settings, where the separations of Table~\ref{tab:final} become visible: on the alternating sequence $\eta=0.5$ is far above the others, and on the stochastic sequence $\eta^*$ lags while \Ada{} and $\eta=0.5$ track the best expert.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\linewidth]{cum_loss_zoom.png}
+\caption{Mean cumulative loss (top) and a zoom on $t\in[4500,5000]$ (bottom).}
+\label{fig:cumzoom}
+\end{figure}
+
+\subsection{Statistical comparison}
+Table~\ref{tab:paired} gives paired differences (\Ada{} minus the reference, per seed, mean $\pm$ 95\% CI); negative means \Ada{} is better.
+\Ada{} is significantly better than $\eta^*$ on the stochastic and switching sequences ($-34.4$, $-28.1$) and than $\eta=0.5$ ($-1.3\pm0.6$, $-2.5\pm0.7$).
+Against the hindsight oracle it is slightly but detectably \emph{worse} ($+1.3\pm0.4$ and $+1.3\pm0.9$), so a ``within one standard deviation'' reading of Table~\ref{tab:final} would understate this; since the oracle is selected on the same seeds and sits at the edge of the grid, this comparison favours the oracle.
+On low gap every interval contains zero. On the alternating sequence there is a single deterministic sequence, so I give the difference without a CI.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrr}
+\toprule
+ & vs.\ \Hedge{} $\eta^*$ & vs.\ \Hedge{} $\eta=0.5$ & vs.\ oracle $\eta$\\
+\midrule
+Stochastic & $-34.4\pm 0.8$ & $-1.3\pm 0.6$ & $+1.3\pm 0.4$ \\
+Low gap & $-0.2\pm 3.7$ & $+0.7\pm 7.0$ & $+2.1\pm 4.9$ \\
+Adversarial & $-28.1\pm 3.4$ & $-2.5\pm 0.7$ & $+1.3\pm 0.9$ \\
+Alternating & $-10.6$ & $-255.5$ & $-9.6$\\
+\bottomrule
+\end{tabular}
+\caption{Paired difference in final regret, \Ada{} minus reference (mean $\pm$ 95\% CI over 20 seeds). Negative: \Ada{} better.}
+\label{tab:paired}
+\end{table}
+
+\subsection{Verification of the regret--gap inequality}
+Table~\ref{tab:bound} checks Eq.~\eqref{eq:bound} in every run: it holds in 20/20 runs in all settings. Moreover $\Delta_T$ is $3.6$ on the easiest sequence and $53.6$ on the hardest, always below $\sqrt{T\lnK}\approx107$: the data-dependent quantity tracks the difficulty of the sequence, exactly as the learning-rate plot suggests.
+A weaker inequality, $R_T\le\Delta_T+\lnK$, which I initially assumed, is \emph{false} in general: it fails in 19/20 low-gap runs.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrrcc}
+\toprule
+Setting & $R_T$ & $\Delta_T$ & $2\Delta_T$ & $R_T\le2\Delta_T$ & $R_T\le\Delta_T+\lnK$\\
+\midrule
+Stochastic & $5.5$ & $3.6$ & $7.3$ & 20/20 & 13/20 \\
+Low gap & $54.3$ & $39.7$ & $79.4$ & 20/20 & 1/20 \\
+Switching & $9.6$ & $7.7$ & $15.5$ & 20/20 & 15/20 \\
+Alternating & $54.1$ & $53.6$ & $107.2$ & 20/20 & 20/20\\
+\bottomrule
+\end{tabular}
+\caption{Mean $R_T$ and $\Delta_T$ of \Ada{} at $T=5000$, and the number of runs (of 20) in which each inequality holds. For reference $\sqrt{T\lnK}\approx107$.}
+\label{tab:bound}
+\end{table}
+
+\section{Discussion and limitations}\label{sec:discussion}
+\paragraph{When does AdaHedge help?} Clearly when the best expert is identifiable (stochastic, switching): it removes the $7\times$ (stochastic) and $4\times$ (switching) overhead of the worst-case tuned $\eta^*$, and the scaling study shows this overhead grows with $T$.
+It protects against the failure of large $\eta$ on deterministic hard data ($6\times$ lower regret than $\eta=0.5$ at $T=5000$, and the gap grows linearly with $T$). It gives no gain when the sequence is statistically too hard (low gap).
+
+\paragraph{Negative aspects.}
+(a) A hindsight-tuned \Hedge{} is slightly better than \Ada{} on stochastic ($4.2$ vs.\ $5.5$) and switching ($8.3$ vs.\ $9.6$), by a small but statistically detectable margin; this oracle is not realisable and optimistic.
+(b) Nothing is distinguishable on low gap.
+(c) The ``adversarial'' sequence is oblivious and random; the alternating one is a single hand-built pattern. Adaptive adversaries were not tested, and neither \Hedge{} nor \Ada{} can track a switching comparator (Fixed Share would be needed).
+
+\paragraph{Limitations.}
+Only $K=10$ and $T\le50\,000$; $K$ was not varied; 20 seeds (10 at $T=50\,000$); the $\eta$-grid is coarse and the oracle optimistic; losses are in $\{0,1\}$ (the algorithms are defined for $[0,1]$, fractional losses were not tested).
+The paper's FlipFlop algorithm, interpolating between \Hedge{} with large $\eta$ and \Ada{}, was not implemented. The worst-case bound on $\Delta_T$ is quoted, not re-derived.
+
+\section{Conclusion}\label{sec:conclusion}
+Fixed-$\eta$ \Hedge{} forces a trade-off: large $\eta$ is excellent on easy data and has linear regret on the worst case; the theory-optimal $\eta^*$ is safe but slow, and its overhead on easy data grows with $T$. \Ada{} resolves this trade-off in my experiments: it beats every realisable fixed choice on the informative sequences,
+stays within a small margin of a hindsight-tuned \Hedge{}, and never needs $T$ or the difficulty in advance. Its learning rate $\eta_t$ and gap $\Delta_T$ give an interpretable measure of that difficulty, consistent with $R_T\le2\Delta_T$.
+
+\clearpage
+\appendix
+\section{Cumulative loss plots}\label{app:cum}
+\begin{figure}[h]
+\centering
+\begin{subfigure}{0.49\textwidth}\includegraphics[width=\linewidth]{cum_loss_stochastic.png}\end{subfigure}
+\begin{subfigure}{0.49\textwidth}\includegraphics[width=\linewidth]{cum_loss_low_gap.png}\end{subfigure}
+\begin{subfigure}{0.49\textwidth}\includegraphics[width=\linewidth]{cum_loss_adversarial.png}\end{subfigure}
+\begin{subfigure}{0.49\textwidth}\includegraphics[width=\linewidth]{cum_loss_alternating.png}\end{subfigure}
+\caption{Cumulative loss vs.\ time (mean over 20 runs). At this scale, differences of a few tens of units are hard to see against totals of $\approx2500$; see Figure~\ref{fig:cumzoom} for a zoom.}
+\end{figure}
+
+\section{Reproducibility}
+{\sloppy Code: \texttt{src/\allowbreak{}algorithms.py}, \texttt{src/\allowbreak{}datasets.py}, \texttt{main.py} (figures, \texttt{results/\allowbreak{}summary.csv}), \texttt{check\_\allowbreak{}bound.py} (Table~\ref{tab:bound}), \texttt{extra\_\allowbreak{}experiments.py} (sweep with bound, scaling, paired statistics, pseudo-regret, zoomed plot) and \texttt{make\_\allowbreak{}tables.py} (LaTeX tables generated from the CSV files, so report numbers match the code). Seeds are $0,\dots,19$ via \texttt{numpy.random.default\_\allowbreak{}rng}.}
+Run, from the repository root:
+\begin{quote}\small\ttfamily
+pip install -r requirements.txt\\
+python main.py\\
+python check\_bound.py\\
+python extra\_experiments.py\\
+python make\_tables.py\\
+latexmk -pdf report.tex
+\end{quote}
+Python, NumPy and Matplotlib only; the runtime is a few minutes.
+
+\begin{thebibliography}{9}
+\bibitem{vanErven2011} T.~van Erven, P.~Gr\"unwald, W.~Koolen, S.~de Rooij. \emph{Adaptive Hedge}. NeurIPS 2011.
+\bibitem{deRooij2014} S.~de Rooij, T.~van Erven, P.~Gr\"unwald, W.~Koolen. \emph{Follow the Leader If You Can, Hedge If You Must}. JMLR 15:1281--1316, 2014.
+\end{thebibliography}
+\end{document}
