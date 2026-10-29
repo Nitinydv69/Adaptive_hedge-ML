@@ -338,14 +338,13 @@ stays within a small margin of a hindsight-tuned \Hedge{}, and never needs $T$ o
 \end{figure}
 
 \section{Reproducibility}
-{\sloppy Code: \texttt{src/\allowbreak{}algorithms.py}, \texttt{src/\allowbreak{}datasets.py}, \texttt{main.py} (figures, \texttt{results/\allowbreak{}summary.csv}), \texttt{check\_\allowbreak{}bound.py} (Table~\ref{tab:bound}), \texttt{extra\_\allowbreak{}experiments.py} (sweep with bound, scaling, paired statistics, pseudo-regret, zoomed plot) and \texttt{make\_\allowbreak{}tables.py} (LaTeX tables generated from the CSV files, so report numbers match the code). Seeds are $0,\dots,19$ via \texttt{numpy.random.default\_\allowbreak{}rng}.}
+{\sloppy Code: \texttt{src/\allowbreak{}algorithms.py}, \texttt{src/\allowbreak{}datasets.py}, \texttt{main.py} (figures, \texttt{results/\allowbreak{}summary.csv}), \texttt{check\_\allowbreak{}bound.py} (Table~\ref{tab:bound}), \texttt{extra\_\allowbreak{}experiments.py} (sweep with bound, scaling, paired statistics, pseudo-regret, zoomed plot). Seeds are $0,\dots,19$ via \texttt{numpy.random.default\_\allowbreak{}rng}.}
 Run, from the repository root:
 \begin{quote}\small\ttfamily
 pip install -r requirements.txt\\
 python main.py\\
 python check\_bound.py\\
 python extra\_experiments.py\\
-python make\_tables.py\\
 latexmk -pdf report.tex
 \end{quote}
 Python, NumPy and Matplotlib only; the runtime is a few minutes.
