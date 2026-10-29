@@ -35,6 +35,7 @@ cumulative mixability gap, so it needs no tuning.
 ├── report.tex / report.pdf   # Final report
 ├── requirements.txt          # numpy, matplotlib
 ├── main.py                   # Runs all experiments, saves plots and results/summary.csv
+├── extra_experiments.py      
 ├── check_bound.py            # Checks R_T <= 2*Delta_T for AdaHedge (report, Table 3)
 ├── src/
 │   ├── algorithms.py         # Hedge and AdaHedge
@@ -52,6 +53,8 @@ Requires Python 3.9+.
 pip install -r requirements.txt
 python main.py          # figures in plots/, table in results/summary.csv
 python check_bound.py   # regret vs. mixability-gap check
+python extra_experiments.py
+latexmk -pdf report.tex
 ```
 
 All runs use seeds 0-19, and every algorithm sees the same sequence for a given seed.
