@@ -22,3 +22,4 @@ venv/
 *.synctex.gz
 *.bbl
 *.blg.DS_Store
+.DS_Store
