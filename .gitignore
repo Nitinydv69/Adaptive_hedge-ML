@@ -21,4 +21,4 @@ venv/
 *.fdb_latexmk
 *.synctex.gz
 *.bbl
-*.blg
+*.blg.DS_Store
